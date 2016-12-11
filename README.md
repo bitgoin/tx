@@ -1,5 +1,5 @@
 
-[![Build Status](https://travis-ci.org/utamaro/tx.svg?branch=master)](https://travis-ci.org/utamaro/tx)
+[![Build Status](https://travis-ci.org/bitgoin/tx.svg?branch=master)](https://travis-ci.org/bitgoin/tx)
 [![GoDoc](https://godoc.org/github.com/bitgoin/address?status.svg)](https://godoc.org/github.com/bitgoin/tx)
 [![GitHub license](https://img.shields.io/badge/license-BSD-blue.svg)](https://raw.githubusercontent.com/bitgoin/tx/LICENSE)
 
