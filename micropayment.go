@@ -148,8 +148,7 @@ func (m *MicroPayer) CreateBond(locktime uint32, coins UTXOs, ref string) (*Tx, 
 		return nil, nil, err
 	}
 	refund, err := m.PubInfo.txForSign(locktime, sends...)
-
-	return bond, refund, nil
+	return bond, refund, err
 }
 
 //SignRefund signs refund..

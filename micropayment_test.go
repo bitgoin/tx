@@ -93,10 +93,10 @@ func TestMicro(t *testing.T) {
 		t.Error(err)
 	}
 
-	if err := payer.SignRefund(refund, sign); err != nil {
+	if err = payer.SignRefund(refund, sign); err != nil {
 		t.Error(err)
 	}
-	if err := payee.CheckBond(refund, bond); err != nil {
+	if err = payee.CheckBond(refund, bond); err != nil {
 		t.Error(err)
 	}
 

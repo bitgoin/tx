@@ -173,6 +173,9 @@ func TestRedeemScript(t *testing.T) {
 	}
 
 	byt, err = tx.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
 	log.Println(hex.EncodeToString(byt))
 	slen := tx.TxIn[0].Script[1]
 	script = tx.TxIn[0].Script[2 : slen+2]
