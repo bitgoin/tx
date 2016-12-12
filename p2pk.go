@@ -31,10 +31,8 @@ package tx
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"sort"
 
 	"math"
@@ -105,7 +103,7 @@ func p2pkTxouts(fee uint64, sends ...*Send) ([]*TxOut, uint64, error) {
 	return txouts, total, nil
 }
 
-func newTxins(total uint64, coins UTXOs, refundAddress string, locktime uint32) ([]*TxIn, []*address.PrivateKey, *TxOut, error) {
+func newTxins(total uint64, coins UTXOs, refundAddress string, locktime uint32) ([]*TxIn, []*UTXO, *TxOut, error) {
 	var seq uint32 = math.MaxUint32
 	if locktime != 0 {
 		seq = 0
@@ -113,16 +111,16 @@ func newTxins(total uint64, coins UTXOs, refundAddress string, locktime uint32) 
 	var txins []*TxIn
 	var amount uint64
 	sort.Sort(coins)
-	var privs []*address.PrivateKey
+	var used []*UTXO
 	for i := 0; i < len(coins) && amount < total; i++ {
 		c := coins[i]
 		txins = append(txins, &TxIn{
 			Hash:   c.TxHash,
 			Index:  c.TxIndex,
-			Script: c.Script, //pubscript to sign.
+			Script: []byte{}, //pubscript to sign.
 			Seq:    seq,
 		})
-		privs = append(privs, c.Key)
+		used = append(used, c)
 		amount += c.Value
 	}
 	if amount < total {
@@ -142,33 +140,35 @@ func newTxins(total uint64, coins UTXOs, refundAddress string, locktime uint32) 
 		}
 		mto, err = p2pkTtxout(&s)
 	}
-	return txins, privs, mto, err
+	return txins, used, mto, err
 }
 
-func signTx(result *Tx, privs []*address.PrivateKey) ([][]byte, error) {
-	var buf bytes.Buffer
-	if err := packer.Pack(&buf, *result); err != nil {
-		return nil, err
-	}
-	beforeb := buf.Bytes()
-	beforeb = append(beforeb, 0x01, 0, 0, 0) //hash code type
-	h := sha256.Sum256(beforeb)
-	h = sha256.Sum256(h[:])
-	log.Println(hex.EncodeToString(h[:]))
-	sign := make([][]byte, len(privs))
+func signTx(result *Tx, used []*UTXO) ([][]byte, error) {
+	sign := make([][]byte, len(used))
 	var err error
-	for i, p := range privs {
-		sign[i], err = p.Sign(h[:])
+	for i, p := range used {
+		var buf bytes.Buffer
+		backup := result.TxIn[i].Script
+		result.TxIn[i].Script = p.Script
+		if err := packer.Pack(&buf, *result); err != nil {
+			return nil, err
+		}
+		beforeb := buf.Bytes()
+		beforeb = append(beforeb, 0x01, 0, 0, 0) //hash code type
+		h := sha256.Sum256(beforeb)
+		h = sha256.Sum256(h[:])
+		sign[i], err = p.Key.Sign(h[:])
 		if err != nil {
 			return nil, err
 		}
+		result.TxIn[i].Script = backup
 	}
 	return sign, nil
 }
 
 //FillP2PKsign embeds sign script to result Tx.
-func FillP2PKsign(result *Tx, privs []*address.PrivateKey) error {
-	signs, err := signTx(result, privs)
+func FillP2PKsign(result *Tx, used []*UTXO) error {
+	signs, err := signTx(result, used)
 	if err != nil {
 		return err
 	}
@@ -177,7 +177,7 @@ func FillP2PKsign(result *Tx, privs []*address.PrivateKey) error {
 		scr := result.TxIn[i].Script[:0]
 		scr = append(scr, byte(len(s)))
 		scr = append(scr, s...)
-		pub := privs[i].PublicKey.Serialize()
+		pub := used[i].Key.PublicKey.Serialize()
 		scr = append(scr, byte(len(pub)))
 		scr = append(scr, pub...)
 		result.TxIn[i].Script = scr
@@ -188,17 +188,17 @@ func FillP2PKsign(result *Tx, privs []*address.PrivateKey) error {
 //NewP2PK creates msg.Tx from send infos.
 //last index of sends must be refund address, and its amount must be 0..
 func NewP2PK(fee uint64, coins UTXOs, locktime uint32, sends ...*Send) (*Tx, error) {
-	result, privs, err := NewP2PKunsign(fee, coins, locktime, sends...)
+	result, used, err := NewP2PKunsign(fee, coins, locktime, sends...)
 	if err != nil {
 		return nil, err
 	}
-	err = FillP2PKsign(result, privs)
+	err = FillP2PKsign(result, used)
 	return result, err
 }
 
 //NewP2PKunsign creates msg.Tx from send infos without signing tx..
 //last index of sends must be refund address, and its amount must be 0..
-func NewP2PKunsign(fee uint64, coins UTXOs, locktime uint32, sends ...*Send) (*Tx, []*address.PrivateKey, error) {
+func NewP2PKunsign(fee uint64, coins UTXOs, locktime uint32, sends ...*Send) (*Tx, []*UTXO, error) {
 	txouts, total, err := p2pkTxouts(fee, sends...)
 	if err != nil {
 		return nil, nil, err
@@ -207,7 +207,7 @@ func NewP2PKunsign(fee uint64, coins UTXOs, locktime uint32, sends ...*Send) (*T
 		return nil, nil, errors.New("last index of sends must be refund address and amount must be 0")
 	}
 
-	txins, privs, mto, err := newTxins(total, coins, sends[len(sends)-1].Addr, locktime)
+	txins, used, mto, err := newTxins(total, coins, sends[len(sends)-1].Addr, locktime)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -219,7 +219,7 @@ func NewP2PKunsign(fee uint64, coins UTXOs, locktime uint32, sends ...*Send) (*T
 		TxIn:     txins,
 		TxOut:    txouts,
 		Locktime: locktime,
-	}, privs, nil
+	}, used, nil
 }
 
 //CustomTx returns OP_RETURN txout with the custome data.

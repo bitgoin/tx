@@ -2,6 +2,7 @@ package tx
 
 import (
 	"encoding/hex"
+	"log"
 	"testing"
 
 	"github.com/bitgoin/address"
@@ -59,4 +60,21 @@ func TestTX(t *testing.T) {
 	if hex.EncodeToString(rawtx) != ok {
 		t.Error("invalid tx", hex.EncodeToString(rawtx))
 	}
+
+	//get unsigned TX.
+	tx, used, err := NewP2PKunsign(0.0001*Unit, coins, 0, send...)
+
+	//add custom txout and add it to tx.
+	txout := CustomTx([]byte("some public data"))
+	tx.TxOut = append(tx.TxOut, txout)
+
+	//sign tx.
+	if err := FillP2PKsign(tx, used); err != nil {
+		t.Error(err)
+	}
+	rawtx, err = tx.Pack()
+	if err != nil {
+		t.Error(err)
+	}
+	log.Print(hex.EncodeToString(rawtx))
 }

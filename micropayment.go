@@ -118,7 +118,11 @@ func (m *MicroPayee) SignRefund(refund *Tx, locktime uint32) ([]byte, error) {
 		return nil, errors.New("illegal txin index")
 	}
 	refund.TxIn[0].Script = m.PubInfo.redeemHash()
-	signs, err := signTx(refund, []*address.PrivateKey{m.priv})
+	prev := &UTXO{
+		Key:    m.priv,
+		Script: m.PubInfo.redeemHash(),
+	}
+	signs, err := signTx(refund, []*UTXO{prev})
 	if err != nil {
 		return nil, err
 	}
@@ -133,13 +137,13 @@ func (m *MicroPayee) CheckBond(refund, bond *Tx) error {
 	if !bytes.Equal(refund.TxIn[0].Hash, bond.Hash()) {
 		return errors.New("illegal txin hash in refund")
 	}
-	m.PubInfo.prev = bond
+	m.PubInfo.bond = bond
 	return nil
 }
 
 //CreateBond returns bond and refund tx for sign.
 func (m *MicroPayer) CreateBond(locktime uint32, coins UTXOs, ref string) (*Tx, *Tx, error) {
-	bond, err := m.MultisigOut(coins, ref, locktime)
+	bond, err := m.BondTx(coins, ref, locktime)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -154,7 +158,11 @@ func (m *MicroPayer) CreateBond(locktime uint32, coins UTXOs, ref string) (*Tx, 
 //SignRefund signs refund..
 func (m *MicroPayer) SignRefund(refund *Tx, sign []byte) error {
 	signs := make([][]byte, 2)
-	mysign, err := signTx(refund, []*address.PrivateKey{m.priv})
+	prev := &UTXO{
+		Key:    m.priv,
+		Script: m.PubInfo.redeemHash(),
+	}
+	mysign, err := signTx(refund, []*UTXO{prev})
 	if err != nil {
 		return err
 	}
@@ -188,5 +196,5 @@ func (m *MicroPayee) IncrementedTx(amount uint64, sign []byte) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
-	return m.MultisigIn(0, [][]byte{sign, mysign}, sends...)
+	return m.SpendBondTx(0, [][]byte{sign, mysign}, sends...)
 }

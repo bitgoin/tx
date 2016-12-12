@@ -75,14 +75,14 @@ func main(){
     //if you want to add custom data to tx  with OP_RETURN.
 
 	//get unsigned TX.
-	tx,privs, err := tx.NewP2PKunsign(fee, coins, locktime, send...)
+	ntx, used, err := tx.NewP2PKunsign(0.0001*Unit, coins, 0, send...)
 
 	//add custom txout and add it to tx.
-	txout:=tx.customTx("some public data")
-	tx.Txout=append(tx.TxOut,txout)
+	txout := tx.CustomTx([]byte("some public data"))
+	ntx.TxOut = append(ntx.TxOut, txout)
 
 	//sign tx.
-	tx.FillP2KSign(tx,privs)
+	err := tx.FillP2PKsign(ntx, used);
 }
 ```
 
@@ -204,6 +204,16 @@ func main(){
 
 }
 ```
+
+* Note
+
+Payer must send refund tx after locktime.
+
+http://chimera.labs.oreilly.com/books/1234000001802/ch05.html#tx_propagation
+
+>Transactions with locktime specifying a future block or time must be held by the originating system
+>and transmitted to the bitcoin network only after they become valid.
+
 
 # Contribution
 Improvements to the codebase and pull requests are encouraged.

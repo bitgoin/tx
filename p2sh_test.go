@@ -68,7 +68,12 @@ func TestRedeemScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hashout, err := hex.DecodeString("938fec7fa5ab2d7d3f5febe71bc295bfaa4b8fdf2cf414c3d7e5fccd56942364")
+	hashout := make([][]byte, 2)
+	hashout[0], err = hex.DecodeString("e0f6208a5718f126aa592c432a246761e6e4f1ac428e703f32e02f4828fab266")
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashout[1], err = hex.DecodeString("4738c127eef819608dafc005f83a9ec9bf8b98d97ec9adf254f7fe8954ec10c2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +102,7 @@ func TestRedeemScript(t *testing.T) {
 		Fee:    0.001 * Unit,
 	}
 
-	txout, err := pi.MultisigOut(utxos, pkey.PublicKey.Address(), 0)
+	txout, err := pi.BondTx(utxos, pkey.PublicKey.Address(), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +118,7 @@ func TestRedeemScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	log.Println(hex.EncodeToString(byt))
-	for _, in := range txout.TxIn {
+	for i, in := range txout.TxIn {
 		slen := in.Script[0]
 		script = in.Script[1:slen]
 		//in.Script[slen]=0x01,in.Script[slen+1]=length of pubkey
@@ -122,7 +127,7 @@ func TestRedeemScript(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err = pubk.Verify(script, hashout); err != nil {
+		if err = pubk.Verify(script, hashout[i]); err != nil {
 			t.Error("illegal tx")
 		}
 	}
@@ -134,17 +139,17 @@ func TestRedeemScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pi.prev.TxIn[0].Script = scrb
-	pi.prev.TxIn[1].Script = scrb
+	pi.bond.TxIn[0].Script = scrb
+	pi.bond.TxIn[1].Script = scrb
 	txhashb, err := hex.DecodeString(txhash)
 	if err != nil {
 		t.Fatal(err)
 	}
 	txhashb = Reverse(txhashb)
-	if !bytes.Equal(pi.prev.Hash(), txhashb) {
+	if !bytes.Equal(pi.bond.Hash(), txhashb) {
 		t.Fatal("tx unamtches")
 	}
-	hashin, err := hex.DecodeString("c19a154a97e2fbc86f1b647f4e610a74932c33144a09f16b400c6354a7258090")
+	hashin, err := hex.DecodeString("933ce8591ea3a3c1267b08c9a59ee72e25ef0371bb7fce39fd739426dc260790")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +172,7 @@ func TestRedeemScript(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx, err := pi.MultisigIn(0, [][]byte{sig2, nil, sig}, send...)
+	tx, err := pi.SpendBondTx(0, [][]byte{sig2, nil, sig}, send...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,12 +183,12 @@ func TestRedeemScript(t *testing.T) {
 	}
 	log.Println(hex.EncodeToString(byt))
 	slen := tx.TxIn[0].Script[1]
-	script = tx.TxIn[0].Script[2 : slen+2]
+	script = tx.TxIn[0].Script[2 : slen+2-1]
 	if err = pkey2.PublicKey.Verify(script, hashin); err != nil {
 		t.Error("illegal tx")
 	}
 	slen2 := tx.TxIn[0].Script[slen+2]
-	script = tx.TxIn[0].Script[slen+3 : slen+slen2+3]
+	script = tx.TxIn[0].Script[slen+2+1 : slen+slen2+3-1]
 	if err = pkey.PublicKey.Verify(script, hashin); err != nil {
 		t.Error("illegal tx")
 	}

@@ -43,7 +43,7 @@ import (
 type PubInfo struct {
 	Pubs   []*address.PublicKey
 	Amount uint64
-	prev   *Tx
+	bond   *Tx
 	Fee    uint64
 	M      byte
 }
@@ -71,13 +71,19 @@ func (p *PubInfo) redeemHash() []byte {
 	return script
 }
 
-//MultisigOut creates multisig output.
-func (p *PubInfo) MultisigOut(coins UTXOs, refund string, locktime uint32) (*Tx, error) {
-	script := p.redeemHash()
+//BondTx creates a bond transaction.
+func (p *PubInfo) BondTx(coins UTXOs, refund string, locktime uint32) (*Tx, error) {
+	n := len(p.Pubs)
+	if n == 0 || n > 7 {
+		return nil, errors.New("N must be 0~7")
+	}
+	if p.M == 0 || p.M > byte(n) {
+		return nil, errors.New("M must be 0~N")
+	}
 	txouts := make([]*TxOut, 1, 2)
 	txouts[0] = &TxOut{
 		Value:  p.Amount,
-		Script: script,
+		Script: p.redeemHash(),
 	}
 	txins, privs, mto, err := newTxins(p.Amount+p.Fee, coins, refund, locktime)
 	if err != nil {
@@ -93,13 +99,13 @@ func (p *PubInfo) MultisigOut(coins UTXOs, refund string, locktime uint32) (*Tx,
 		Locktime: 0,
 	}
 	err = FillP2PKsign(&result, privs)
-	p.prev = &result
+	p.bond = &result
 	return &result, err
 }
 
 func (p *PubInfo) searchTxout() (uint32, error) {
 	hash := p.redeemHash()
-	for i, out := range p.prev.TxOut {
+	for i, out := range p.bond.TxOut {
 		if bytes.Equal(out.Script, hash) {
 			return uint32(i), nil
 		}
@@ -108,7 +114,7 @@ func (p *PubInfo) searchTxout() (uint32, error) {
 }
 
 func (p *PubInfo) txForSign(locktime uint32, sends ...*Send) (*Tx, error) {
-	if p.prev == nil {
+	if p.bond == nil {
 		return nil, errors.New("must call MultisigOut first")
 	}
 	txouts, total, err := p2pkTxouts(p.Fee, sends...)
@@ -124,9 +130,9 @@ func (p *PubInfo) txForSign(locktime uint32, sends ...*Send) (*Tx, error) {
 	}
 	utxos := UTXOs{
 		&UTXO{
-			TxHash:  p.prev.Hash(),
+			TxHash:  p.bond.Hash(),
 			TxIndex: index,
-			Script:  p.prev.TxOut[index].Script,
+			Script:  p.redeemScript(),
 			Value:   p.Amount,
 		},
 	}
@@ -134,6 +140,7 @@ func (p *PubInfo) txForSign(locktime uint32, sends ...*Send) (*Tx, error) {
 	if err != nil {
 		return nil, err
 	}
+	mtxin[0].Script = p.redeemScript()
 	if txout != nil {
 		txouts = append(txouts, txout)
 	}
@@ -166,7 +173,11 @@ func (p *PubInfo) SignMultisig(priv *address.PrivateKey,
 	if err != nil {
 		return nil, err
 	}
-	signs, err := signTx(mtx, []*address.PrivateKey{priv})
+	prev := &UTXO{
+		Key:    priv,
+		Script: p.redeemScript(),
+	}
+	signs, err := signTx(mtx, []*UTXO{prev})
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +186,7 @@ func (p *PubInfo) SignMultisig(priv *address.PrivateKey,
 
 func (p *PubInfo) embedSigns(mtx *Tx, sigs [][]byte) error {
 	redeem := p.redeemScript()
-	script2 := make([]byte, 0, 73*len(sigs)+len(redeem)+3)
+	script2 := make([]byte, 0, 74*len(sigs)+len(redeem)+3)
 	script2 = append(script2, op0)
 	var nsig byte
 	for i, s := range sigs {
@@ -185,12 +196,16 @@ func (p *PubInfo) embedSigns(mtx *Tx, sigs [][]byte) error {
 		if err := p.verify(mtx, s, i); err != nil {
 			return fmt.Errorf("%s at %d", err, i)
 		}
-		script2 = append(script2, byte(len(s)))
+		script2 = append(script2, byte(len(s)+1))
 		script2 = append(script2, s...)
+		script2 = append(script2, 0x01)
 		nsig++
 	}
 	if nsig != p.M {
 		return errors.New("signatures are not enough")
+	}
+	if len(redeem) > 255 {
+		return errors.New("len of redeem script must be less than 255")
 	}
 	script2 = append(script2, opPUSHDATA1, byte(len(redeem)))
 	script2 = append(script2, redeem...)
@@ -199,13 +214,13 @@ func (p *PubInfo) embedSigns(mtx *Tx, sigs [][]byte) error {
 	return nil
 }
 
-//MultisigIn creates multisig in Tx from send infos.
-//Prev in PubInfo must be filled.
-func (p *PubInfo) MultisigIn(locktime uint32, sigs [][]byte, sends ...*Send) (*Tx, error) {
+//SpendBondTx creates tx which spends bond.
+//Bond field in PubInfo must be filled previously.
+func (p *PubInfo) SpendBondTx(locktime uint32, sigs [][]byte, sends ...*Send) (*Tx, error) {
 	if len(sigs) == 0 {
 		return nil, errors.New("must fill sigs")
 	}
-	if p.prev == nil {
+	if p.bond == nil {
 		return nil, errors.New("must fill prev in pubinfo")
 	}
 	mtx, err := p.txForSign(locktime, sends...)
