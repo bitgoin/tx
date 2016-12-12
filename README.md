@@ -122,8 +122,8 @@ func main(){
 		Fee:    fee,
 	}
 
-	//make script hash out transaction from coins.
-	txout, err := pi.MultisigOut(utxos, pkey.PublicKey.Address(), locktime)
+	//make bond transaction from coins.
+	txout, err := pi.BondTx(utxos, pkey.PublicKey.Address(), locktime)
 
 	//prepare send addresses and its amount.
 	//last address must be refund address and its amount must be 0.
@@ -142,9 +142,9 @@ func main(){
 	sig2, err := pi.SignMultisig(pkey2, locktime, send...)
 	sig, err := pi.SignMultisig(pkey, locktime, send...)
 
-    //make script hash in transaction with signs.
+    //make transaction which spends bond.
 	//signs must be filled in same order as Pubinfo.Pubs.
-	tx, err := pi.MultisigIn(0, [][]byte{sig2, nil, sig}, send...)
+	tx, err := pi.SpendBondTx(0, [][]byte{sig2, nil, sig}, send...)
 }
 ```
 
