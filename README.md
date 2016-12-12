@@ -43,6 +43,8 @@ func main(){
 	//Assume script in UTXOs are default P2PK style.
 	//(OP_DUP OP_HASH160 <pubKeyHash> OP_EQUALVERIFY OP_CHECKSIG)
 	script, err := tx.DefaultP2PKScript(txKey.PublicKey.Address())
+
+	//prepare unspent transaction outputs with its privatekey.
 	coins := tx.UTXOs{
 		&tx.UTXO{
 			Key:     txKey,
@@ -77,7 +79,7 @@ func main(){
 	//get unsigned TX.
 	ntx, used, err := tx.NewP2PKunsign(0.0001*Unit, coins, 0, send...)
 
-	//add custom txout and add it to tx.
+	//add custom txout and add it to the tx.
 	txout := tx.CustomTx([]byte("some public data"))
 	ntx.TxOut = append(ntx.TxOut, txout)
 
