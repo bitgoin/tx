@@ -150,7 +150,7 @@ func signTx(result *Tx, used []*UTXO) ([][]byte, error) {
 		var buf bytes.Buffer
 		backup := result.TxIn[i].Script
 		result.TxIn[i].Script = p.Script
-		if err := packer.Pack(&buf, *result); err != nil {
+		if err = packer.Pack(&buf, *result); err != nil {
 			return nil, err
 		}
 		beforeb := buf.Bytes()

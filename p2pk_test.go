@@ -67,9 +67,11 @@ func TestTX(t *testing.T) {
 	//add custom txout and add it to tx.
 	txout := CustomTx([]byte("some public data"))
 	tx.TxOut = append(tx.TxOut, txout)
-
+	if err != nil {
+		t.Error(err)
+	}
 	//sign tx.
-	if err := FillP2PKsign(tx, used); err != nil {
+	if err = FillP2PKsign(tx, used); err != nil {
 		t.Error(err)
 	}
 	rawtx, err = tx.Pack()
